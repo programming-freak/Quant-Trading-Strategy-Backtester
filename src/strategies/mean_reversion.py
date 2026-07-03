@@ -1,0 +1,120 @@
+"""
+Implements the mean reversion strategy, which is based on the assumption
+that asset prices tend to revert to their mean over time.
+"""
+
+from typing import Any
+
+import polars as pl
+from quant_trading_strategy_backtester.strategies.base import BaseStrategy
+from quant_trading_strategy_backtester.strategy_params import (
+    validate_strategy_params,
+)
+
+
+class MeanReversionStrategy(BaseStrategy):
+    """
+    Implements the mean reversion strategy, which is based on the assumption
+    that asset prices tend to revert to their mean over time. Prices are
+    assumed to follow a normal distribution over time, and extreme deviations
+    from the mean are statistically less likely to persist.  This strategy uses
+    a moving average and standard deviation to create upper and lower price
+    bands.
+
+    Attributes:
+        params: A dictionary containing the strategy parameters.
+    """
+
+    def __init__(self, params: dict[str, Any]):
+        validate_strategy_params("Mean Reversion", params)
+        super().__init__(params)
+        # The number of days to calculate the moving average and standard
+        # deviation.
+        self.window = int(params["window"])
+        # The number of standard deviations to use for the price bands. This
+        # sets the upper and lower bands for buy and sell signals
+        # (mean +/- std_dev).
+        self.std_dev = float(params["std_dev"])
+
+    def generate_signals(self, data: pl.DataFrame) -> pl.DataFrame:
+        """
+        Generates trading signals for the given data.
+
+        Generates a buy signal (1) when the price falls below the lower band,
+        and generates a sell signal (-1) when the price rises above the upper
+        band. The strategy assumes mean reversion will occur.
+
+        Args:
+            data: A DataFrame containing the price data. Must have a 'Close'
+                  column.
+
+        Returns:
+            A DataFrame containing the generated trading signals. Columns
+            include 'signal', 'mean', 'std', 'upper_band', 'lower_band', and
+            'position_change'.
+        """
+        if data.is_empty():
+            return pl.DataFrame(
+                schema=[
+                    ("Date", pl.Date),
+                    ("Close", pl.Float64),
+                    ("short_mavg", pl.Float64),
+                    ("long_mavg", pl.Float64),
+                    ("signal", pl.Float64),
+                    ("position_change", pl.Float64),
+                ]
+            )
+
+        valid_band = (
+            pl.col("std").is_not_null()
+            & pl.col("std").is_finite()
+            & (pl.col("std") > 0)
+        )
+        signals: pl.DataFrame = (  # type: ignore[invalid-assignment]
+            data.select([pl.col("Date"), pl.col("Close")])
+            .lazy()
+            .with_columns(
+                [
+                    pl.col("Close")
+                    .rolling_mean(
+                        window_size=self.window,
+                        min_samples=self.window,
+                    )
+                    .alias("mean"),
+                    pl.col("Close")
+                    .rolling_std(
+                        window_size=self.window,
+                        min_samples=self.window,
+                    )
+                    .alias("std"),
+                ]
+            )
+            .with_columns(
+                [
+                    (pl.col("mean") + (self.std_dev * pl.col("std"))).alias(
+                        "upper_band"
+                    ),
+                    (pl.col("mean") - (self.std_dev * pl.col("std"))).alias(
+                        "lower_band"
+                    ),
+                ]
+            )
+            .with_columns(
+                [
+                    # Buy signal.
+                    pl.when(valid_band & (pl.col("Close") < pl.col("lower_band")))
+                    .then(1.0)
+                    # Sell signal.
+                    .when(valid_band & (pl.col("Close") > pl.col("upper_band")))
+                    .then(-1.0)
+                    .otherwise(0.0)
+                    .alias("signal")
+                ]
+            )
+            .with_columns(
+                [pl.col("signal").diff().fill_null(0).alias("position_change")]
+            )
+            .collect()
+        )
+
+        return signals
