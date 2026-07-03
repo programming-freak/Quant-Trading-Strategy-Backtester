@@ -1,0 +1,55 @@
+name: Version
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  bump_version:
+    if: ${{ !startsWith(github.event.head_commit.message, 'bump:') }}
+    runs-on: ubuntu-latest
+    name: Bump version with commitizen
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@main
+
+      - name: Install commitizen
+        run: pip install commitizen
+
+      - name: Bump version and update uv.lock file
+        run: |
+          # Configure git first
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Run commitizen bump (updates files only, no commit)
+          cz bump --yes --files-only
+
+          # Update lockfile to match new version
+          uv lock
+
+          # Get old and new versions for commit message
+          OLD_VERSION=$(git diff HEAD pyproject.toml | grep '^-version = ' | head -1 | cut -d'"' -f2)
+          NEW_VERSION=$(grep '^version = "' pyproject.toml | head -1 | cut -d'"' -f2)
+
+          # Commit both changes with arrow notation and create tag
+          git add pyproject.toml uv.lock
+          git commit -m "bump: version $OLD_VERSION → $NEW_VERSION"
+          git tag "$NEW_VERSION"
+          git push
+          git push --tags

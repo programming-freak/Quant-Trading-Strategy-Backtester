@@ -1,0 +1,27 @@
+name: Format
+
+on: [push]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ruff format
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: format
+
+      - name: Ruff lint (fix)
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: check --fix
+
+      - name: Commit changes made by Ruff
+        uses: stefanzweifel/git-auto-commit-action@master
+        with:
+          commit_message: Format Python code with Ruff
