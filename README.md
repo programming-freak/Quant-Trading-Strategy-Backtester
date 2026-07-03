@@ -1,0 +1,118 @@
+# Quant Trading Strategy Backtester
+
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Test](https://github.com/IsaacCheng9/quant-trading-strategy-backtester/actions/workflows/test.yml/badge.svg)](https://github.com/IsaacCheng9/quant-trading-strategy-backtester/actions/workflows/test.yml)
+
+A quantitative trading strategy backtester with an interactive dashboard.
+Enables users to implement, test, and visualise trading strategies using
+historical market data, featuring customisable parameters and key performance
+metrics. Developed with Python.
+
+_Try the deployed app
+[here on Streamlit Cloud!](https://quant-trading-strategy-backtester.streamlit.app/)_
+
+## Key Features
+
+- **Multiple trading strategies** – Buy and Hold, Mean Reversion, Moving Average
+  Crossover, and Pairs Trading
+- **Walk-forward validation** – parameter optimisation with expanding training
+  windows to reduce overfitting
+- **Automatic strategy optimisation** – grid search over parameter combinations
+  and stock selection from S&P 500
+- **Transaction costs and slippage modelling** – configurable fees and slippage
+  for realistic performance estimates
+- **Trade ledger and cost attribution** – explicit trade events, turnover,
+  gross/net returns, and cumulative cost drag
+- **Cointegration-gated pairs selection** – Engle-Granger filtering for
+  automatic pairs trading selection and p-value diagnostics for manual pairs
+- **Benchmark-relative reporting** – SPY-relative excess return, beta,
+  annualised alpha, and information ratio for the displayed backtest period
+- **Efficient data processing** – vectorised computation using Polars for
+  improved performance
+- **Interactive web-based dashboard** – Streamlit UI for strategy configuration,
+  backtesting, and analysis
+- **Trade and spread visualisation** – equity curves with trade markers and
+  pairs spread z-score charts with entry/exit threshold bands
+- **Performance metrics** – total return, Sharpe, Sortino, Calmar, drawdown
+  depth/duration, and monthly performance table with rolling returns
+- **Real-time data fetching** – adjusted historical market data from Yahoo
+  Finance
+
+## Methodology Notes
+
+- **Pairs trading** uses a rolling hedge ratio to build the spread and
+  exposure-normalised leg weights to calculate pair returns and transaction
+  costs. Automatic pair selection first filters candidates using an
+  Engle-Granger cointegration test on the training split
+- **Ticker/pair selection** uses a 70/30 train/test split – tickers are
+  selected on training data and evaluated on held-out test data to reduce
+  look-ahead bias
+- **Benchmark comparison** aligns the strategy and SPY return streams by date
+  over the displayed backtest period before calculating relative metrics
+- **Optimisation reporting** shows valid parameter combinations, candidate
+  ticker/pair counts, and whether displayed results come from full-period,
+  held-out, or walk-forward evaluation
+- **Walk-forward validation** uses expanding training windows for more
+  robust out-of-sample evaluation – recommended over the default split
+- **Survivorship bias** remains a limitation – automatic ticker selection uses
+  today's S&P 500 constituents, so historical results can still be biased
+  towards companies that survived to the current index
+
+## Screenshots
+
+![Pairs Trading without Optimisation 1](./resources/screenshots/pairs_trading_no_optimisation_1.png)
+![Pairs Trading without Optimisation 2](./resources/screenshots/pairs_trading_no_optimisation_2.png)
+
+<!-- markdownlint-disable-next-line MD033 -->
+<details>
+<!-- markdownlint-disable-next-line MD033 -->
+<summary>Pairs Trading with Strategy Parameter Optimisation</summary>
+
+![Pairs Trading with Walk-Forward Optimisation 1](./resources/screenshots/pairs_trading_walk_forward_optimised_1.png)
+![Pairs Trading with Walk-Forward Optimisation 2](./resources/screenshots/pairs_trading_walk_forward_optimised_2.png)
+
+</details>
+
+## Performance Benchmark of pandas vs. Polars Implementation
+
+I originally implemented the backtester and optimiser using
+[pandas](https://pandas.pydata.org/), but I wanted to explore the performance
+benefits of using [Polars](https://pola.rs/) with lazy evaluation.
+
+I benchmarked the two implementations on my local machine (Apple M1 Max with 10
+CPU cores and 32 GPU cores, 32 GB unified memory). Data for all 190 ticker pairs
+was pre-downloaded to isolate computation from network I/O. Each run executed
+38,000 backtests (190 pairs x 200 parameter combinations) for the pairs trading
+strategy over 2020/01/01 to 2023/12/31.
+
+**Polars was faster by 2.6x on average compared to pandas.**
+
+![Benchmark Results](./resources/pairs_trading_benchmark_comparison.png)
+
+The full benchmark results can be found in the CSV files in the
+[resources folder](./resources).
+
+## Usage
+
+### Installing Dependencies
+
+Run the following command from the [project root](./) directory:
+
+```bash
+uv sync --all-extras --dev
+```
+
+### Running the Application Locally
+
+Run the following command from the [project root](./) directory:
+
+```bash
+uv run streamlit run src/quant_trading_strategy_backtester/app.py
+```
+
+### Rate Limiting Issues with Yahoo Finance
+
+Note that you may encounter rate limiting issues with Yahoo Finance resulting in
+slow data fetches in the app – unfortunately this is out of my control. You
+could work around this by using a VPN, or wait for a while before trying again.
+Sometimes upgrading the `yfinance` package to the latest version can also help.
